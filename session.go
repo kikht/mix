@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
@@ -23,7 +24,7 @@ type Session struct {
 	output     io.Writer
 	numOut     Tz
 
-	buffer  [numChannels]Buffer
+	buffer  []Buffer
 	regions []*preparedRegion
 	rPos    int
 	active  []*preparedRegion
@@ -103,16 +104,18 @@ func (s *Session) AddRegion(r Region) error {
 		}
 		s.insertRegion(fi)
 	}
-	sr := preparedRegion{
-		Src:    r.Source,
-		Beg:    r.Begin + r.FadeIn,
-		End:    r.Begin + r.Length - r.FadeOut,
-		Off:    r.Offset + r.FadeIn,
-		VolBeg: r.Volume,
-		VolEnd: r.Volume,
-		Pan:    r.Pan,
+	if r.Begin+r.FadeIn != r.Begin+r.Length-r.FadeOut {
+		sr := preparedRegion{
+			Src:    r.Source,
+			Beg:    r.Begin + r.FadeIn,
+			End:    r.Begin + r.Length - r.FadeOut,
+			Off:    r.Offset + r.FadeIn,
+			VolBeg: r.Volume,
+			VolEnd: r.Volume,
+			Pan:    r.Pan,
+		}
+		s.insertRegion(sr)
 	}
-	s.insertRegion(sr)
 	if r.FadeOut > 0 {
 		fo := preparedRegion{
 			Src:    r.Source,
@@ -134,7 +137,8 @@ func (s *Session) insertRegion(r preparedRegion) {
 	rPos := sort.Search(rLen, func(i int) bool {
 		return s.regions[i].Beg > r.Beg
 	})
-	if rPos < s.rPos {
+	//log.Println("insert: regions=", s.regions, "r=", r, "rPos=", rPos)
+	if rPos < s.rPos || (rPos == s.rPos && r.Beg < s.pos) {
 		s.rPos++
 	}
 	s.regions = append(s.regions, &r)
@@ -144,9 +148,9 @@ func (s *Session) insertRegion(r preparedRegion) {
 	}
 
 	if s.pos > r.Beg && s.pos < r.End {
+		//log.Println("insert: New active region", r)
 		s.active = append(s.active, &r)
 	}
-
 }
 
 // Mix length samples and write them to output.
@@ -158,12 +162,12 @@ func (s *Session) Play(length Tz) error {
 		}
 	}
 
-	s.allocateBuffer(length)
-	s.mix(length)
+	buf := s.allocateBuffer(length)
+	s.mix(buf)
 	s.pos += length
 	s.numOut += length
 
-	err := s.writeBuffer()
+	err := s.writeBuffer(buf)
 	if err != nil {
 		return err
 	}
@@ -171,13 +175,18 @@ func (s *Session) Play(length Tz) error {
 	return err
 }
 
-func (s *Session) mix(length Tz) {
+func (s *Session) mix(buffer []Buffer) {
+	if len(buffer) != numChannels {
+		panic("invalid buffer")
+	}
+	length := Tz(len(buffer[0]))
 	end := s.pos + length
 
 	// Add new active regions
 	for ; s.rPos < len(s.regions); s.rPos++ {
 		r := s.regions[s.rPos]
 		if r.Beg < end {
+			//log.Println("mix: New active region", r)
 			s.active = append(s.active, r)
 		} else {
 			break
@@ -202,6 +211,7 @@ func (s *Session) mix(length Tz) {
 			rEnd = bEnd
 		}
 		rLen := rEnd - r.Beg - rOff
+		bEnd -= s.pos
 
 		var gain [numChannels][numChannels]float32
 		schan := r.Src.NumChannels()
@@ -213,6 +223,8 @@ func (s *Session) mix(length Tz) {
 		default:
 			panic("Invalid number of channels")
 		}
+
+		//log.Printf("Mixing region %v, pos=%v end=%v rOff=%v bOff=%v rEnd=%v bEnd=%v rLen=%v gain=%v\n", r, s.pos, end, rOff, bOff, rEnd, bEnd, rLen, gain)
 
 		for i := 0; i < schan; i++ {
 			src := r.Src.Samples(i, r.Off+rOff, rLen)
@@ -231,7 +243,7 @@ func (s *Session) mix(length Tz) {
 			}
 
 			for j := 0; j < numChannels; j++ {
-				dst := s.buffer[j][bOff:bEnd]
+				dst := buffer[j][bOff:bEnd]
 				assert(len(src) == len(dst))
 				dst.MixGain(src, gain[i][j]*vol)
 			}
@@ -256,13 +268,14 @@ func (s *Session) SetPosition(pos Tz) {
 
 	//Simple linear algorithm, interval tree will do it in log(n)
 	s.active = s.active[0:0]
-	var r *preparedRegion
-	for s.rPos, r = range s.regions {
+	for s.rPos = 0; s.rPos < len(s.regions); s.rPos++ {
+		r := s.regions[s.rPos]
 		if pos <= r.Beg {
 			break
 		}
 		if pos < r.End {
 			s.active = append(s.active, r)
+			//log.Println("SetPosition: New active region", r)
 		}
 	}
 }
@@ -283,21 +296,30 @@ func (s *Session) SetOutput(output io.Writer) {
 	s.numOut = 0
 }
 
-func (s *Session) allocateBuffer(length Tz) {
+func (s *Session) allocateBuffer(length Tz) []Buffer {
+	if len(s.buffer) != numChannels {
+		s.buffer = make([]Buffer, numChannels)
+	}
 	for i := 0; i < numChannels; i++ {
 		if Tz(cap(s.buffer[i])) >= length {
 			s.buffer[i] = s.buffer[i][0:length]
 			s.buffer[i].Zero()
 		} else {
-			s.buffer[i] = make([]float32, length)
+			s.buffer[i] = NewBuffer(length)
 		}
 	}
+	return s.buffer
 }
 
 type preparedRegion struct {
 	Src                 Source
 	Beg, End, Off       Tz
 	VolBeg, VolEnd, Pan float32
+}
+
+func (r preparedRegion) String() string {
+	return fmt.Sprintf("{Beg=%v End=%v Off=%v Vol=%4.2f:%4.2f Pan=%+5.2f}",
+		r.Beg, r.End, r.Off, r.VolBeg, r.VolEnd, r.Pan)
 }
 
 // WAV functions
@@ -307,7 +329,7 @@ func (s *Session) wavSizes(numSamples Tz) (riffSize, dataSize uint32) {
 		riffSize = math.MaxUint32
 		dataSize = riffSize - 36
 	} else {
-		dataSize = uint32(numSamples * s.sampleRate * blockAlign)
+		dataSize = uint32(numSamples * blockAlign)
 		riffSize = dataSize + riffHeaderSize
 	}
 	return
@@ -352,17 +374,20 @@ func (s *Session) wavHeader(numSamples Tz) []byte {
 	return buf.Bytes()
 }
 
-func (s *Session) writeBuffer() error {
-	length := len(s.buffer[0])
-	if len(s.buffer[1]) != length {
+func (s *Session) writeBuffer(buffer []Buffer) error {
+	if len(buffer) != numChannels {
+		return errors.New("Only stereo buffers are supported")
+	}
+	length := len(buffer[0])
+	if len(buffer[1]) != length {
 		return errors.New("invalid buffer")
 	}
 
 	out := bufio.NewWriter(s.output)
 	b := make([]byte, 8)
 	for i := 0; i < length; i++ {
-		l := math.Float32bits(s.buffer[0][i])
-		r := math.Float32bits(s.buffer[1][i])
+		l := math.Float32bits(buffer[0][i])
+		r := math.Float32bits(buffer[1][i])
 		binary.LittleEndian.PutUint32(b[0:4], l)
 		binary.LittleEndian.PutUint32(b[4:8], r)
 		out.Write(b)

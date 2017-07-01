@@ -5,6 +5,11 @@ import "github.com/rkusa/gm/math32"
 // Buffer of audio data.
 type Buffer []float32
 
+// Create new buffer of length samples.
+func NewBuffer(length Tz) Buffer {
+	return make([]float32, length)
+}
+
 // Fill buffer with zeros (silence).
 func (dst Buffer) Zero() {
 	for i := range dst {
@@ -91,8 +96,9 @@ func panStereoGain(pan float32) (l2l, l2r, r2l, r2r float32) {
 	panL := (pan + 1 - w) / 2
 	panR := (pan + 1 + w) / 2
 
-	l2l, l2r = math32.Sincos(math32.Pi / 2 * panL)
-	r2r, r2l = math32.Sincos(math32.Pi / 2 * panR)
+	const coef = math32.Pi / 2
+	l2r, l2l = math32.Sincos(panL * coef)
+	r2r, r2l = math32.Sincos(panR * coef)
 	return
 }
 
@@ -102,5 +108,6 @@ func panMonoGain(pan float32) (l, r float32) {
 	} else if pan < -1 {
 		pan = -1
 	}
-	return math32.Sincos(math32.Pi / 2 * pan)
+	const coef = math32.Pi / 4
+	return math32.Sincos((1 - pan) * coef)
 }

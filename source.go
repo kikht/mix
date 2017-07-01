@@ -30,7 +30,7 @@ func LoadSOX(path string) (Source, error) {
 	length := info.Length()
 	if length > 0 {
 		for i := 0; i < channels; i++ {
-			res.Data[i] = make([]float32, 0, length)
+			res.Data[i] = NewBuffer(Tz(length))[0:0]
 		}
 	}
 
