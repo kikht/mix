@@ -169,10 +169,13 @@ func (s *Session) Play(length Tz) error {
 
 	err := s.writeBuffer(buf)
 	if err != nil {
-		return err
+		return errors.New("error while writing audio buffer: " + err.Error())
 	}
 	err = s.updateHeader()
-	return err
+	if err != nil {
+		return errors.New("error while updating WAV header: " + err.Error())
+	}
+	return nil
 }
 
 func (s *Session) mix(buffer []Buffer) {
@@ -404,8 +407,12 @@ func (s *Session) updateHeader() error {
 		)
 		binary.LittleEndian.PutUint32(buf, riffSize)
 		_, err = w.WriteAt(buf, riffSizeOff)
-		if err != nil && !isPipeErr(err) {
-			return err
+		if err != nil {
+			if isPipeErr(err) {
+				return nil
+			} else {
+				return err
+			}
 		}
 		binary.LittleEndian.PutUint32(buf, dataSize)
 		_, err = w.WriteAt(buf, dataSizeOff)
@@ -418,7 +425,7 @@ func (s *Session) updateHeader() error {
 
 func isPipeErr(err error) bool {
 	if perr, ok := err.(*os.PathError); ok {
-		err = perr
+		err = perr.Err
 	}
 	if err == syscall.ESPIPE {
 		return true
