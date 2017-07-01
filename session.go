@@ -33,17 +33,7 @@ type Session struct {
 	//data format
 }
 
-const (
-	fmtSize       = 16
-	bitsPerSample = 32
-	numChannels   = 2
-	sampleFormat  = 3 //for float, 1 for PCM
-	blockAlign    = numChannels * bitsPerSample / 8
-
-	dataSizeOff    = 40
-	riffSizeOff    = 4
-	riffHeaderSize = 36
-)
+const numChannels = 2
 
 func NewSession(sampleRate Tz) *Session {
 	sess := &Session{
@@ -327,10 +317,23 @@ func (r preparedRegion) String() string {
 
 // WAV functions
 
+const (
+	bitsPerSample      = 32
+	sampleFormat       = 3 //for float, 1 for PCM
+	sampleFormatSuffix = "\x00\x00\x00\x00\x10\x00\x80\x00\x00\xAA\x00\x38\x9B\x71"
+	blockAlign         = numChannels * bitsPerSample / 8
+
+	extSize        = 2 + 4 + 16
+	fmtSize        = 2 + 2 + 4 + 4 + 2 + 2 + 2 + extSize
+	riffSizeOff    = 4
+	riffHeaderSize = 4 + 4 + 4 + fmtSize + 4 + 4
+	dataSizeOff    = riffHeaderSize + 4
+)
+
 func (s *Session) wavSizes(numSamples Tz) (riffSize, dataSize uint32) {
 	if numSamples < 0 {
 		riffSize = math.MaxUint32
-		dataSize = riffSize - 36
+		dataSize = riffSize - riffHeaderSize
 	} else {
 		dataSize = uint32(numSamples * blockAlign)
 		riffSize = dataSize + riffHeaderSize
@@ -345,19 +348,23 @@ func (s *Session) wavHeader(numSamples Tz) []byte {
 	)
 
 	//  0  4 "RIFF"
-	//  4  4 riffSize = 36 + samples * byteRate (or just maximum possible)
+	//  4  4 riffSize = header + samples * byteRate (or just maximum possible)
 	//  8  4 "WAVE"
 	// 12  4 "fmt "
-	// 16  4 fmtSize = 16
+	// 16  4 fmtSize
 	// 20  2 smplFmt
 	// 22  2 numChan
 	// 24  4 smpRate
 	// 28  4 byteRate
-	// 30  2 block
-	// 32  2 bits
-	// 36  4 "data"
-	// 40  4 dataSize = samples * byteRate
-	// 44  ...
+	// 32  2 block
+	// 34  2 bits
+	// 36  2 extSize
+	// 38  2 validBits
+	// 40  4 channelMask
+	// 44 16 format
+	// 60  4 "data"
+	// 64  4 dataSize = samples * byteRate
+	// 68  ...
 
 	buf := new(bytes.Buffer)
 	buf.Write([]byte("RIFF"))
@@ -371,6 +378,11 @@ func (s *Session) wavHeader(numSamples Tz) []byte {
 	binary.Write(buf, binary.LittleEndian, uint32(byteRate))
 	binary.Write(buf, binary.LittleEndian, uint16(blockAlign))
 	binary.Write(buf, binary.LittleEndian, uint16(bitsPerSample))
+	binary.Write(buf, binary.LittleEndian, uint16(extSize))
+	binary.Write(buf, binary.LittleEndian, uint16(bitsPerSample))
+	binary.Write(buf, binary.LittleEndian, uint32(0))
+	binary.Write(buf, binary.LittleEndian, uint16(sampleFormat))
+	buf.Write([]byte(sampleFormatSuffix))
 	buf.Write([]byte("data"))
 	binary.Write(buf, binary.LittleEndian, uint32(dataSize))
 
