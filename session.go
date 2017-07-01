@@ -145,6 +145,9 @@ func (s *Session) insertRegion(r preparedRegion) {
 
 // Mix length samples and write them to output.
 func (s *Session) Play(length Tz) error {
+	if length < 0 {
+		return errors.New("Can't play length < 0")
+	}
 	if s.numOut == 0 {
 		_, err := s.output.Write(s.wavHeader(-1))
 		if err != nil {
