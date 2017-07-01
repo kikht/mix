@@ -4,6 +4,7 @@ import (
 	"errors"
 	sox "github.com/krig/go-sox"
 	"math"
+	"time"
 )
 
 type Source interface {
@@ -11,6 +12,7 @@ type Source interface {
 	SampleRate() Tz
 	NumChannels() int
 	Length() Tz
+	Duration() time.Duration
 }
 
 // Load audio file into memory using libsox.
@@ -79,4 +81,8 @@ func (s MemSource) Length() Tz {
 		return 0
 	}
 	return Tz(len(s.Data[0]))
+}
+
+func (s MemSource) Duration() time.Duration {
+	return time.Duration(s.Length() * Tz(time.Second) / s.SampleRate())
 }
