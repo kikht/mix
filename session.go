@@ -173,6 +173,9 @@ func (s *Session) mix(buffer []Buffer) {
 		panic("invalid buffer")
 	}
 	length := Tz(len(buffer[0]))
+	if length == 0 {
+		return
+	}
 	end := s.pos + length
 
 	// Add new active regions
