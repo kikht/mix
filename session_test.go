@@ -212,6 +212,9 @@ func TestMix(t *testing.T) {
 	t.Log("mix1")
 	buf := s.allocateBuffer(length)
 	s.mix(buf)
+	if len(s.active) != 0 {
+		t.Error("invalid active list", s.active)
+	}
 	for i, c := range buf {
 		val := c[0]
 		if val == 0 {
@@ -229,6 +232,9 @@ func TestMix(t *testing.T) {
 	s.SetPosition(-length / 2)
 	buf = s.allocateBuffer(length)
 	s.mix(buf)
+	if len(s.active) != 1 {
+		t.Error("invalid active list", s.active)
+	}
 	for i, c := range buf {
 		for j := 0; j < length/2; j++ {
 			if c[j] != 0 {
@@ -253,6 +259,9 @@ func TestMix(t *testing.T) {
 	s.SetPosition(length / 2)
 	buf = s.allocateBuffer(length)
 	s.mix(buf)
+	if len(s.active) != 0 {
+		t.Error("invalid active list", s.active)
+	}
 	for i, c := range buf {
 		val := c[0]
 		if val == 0 {

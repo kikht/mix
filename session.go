@@ -249,7 +249,7 @@ func (s *Session) mix(buffer []Buffer) {
 			}
 		}
 
-		if end > r.End {
+		if end < r.End {
 			s.active[lastActive] = r
 			lastActive++
 		}
