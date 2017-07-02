@@ -9,6 +9,12 @@ Audio mixer for golang. Inspired by https://github.com/go-mix/mix but has follow
 - Float32 for audio samples - more than enough for audio.
 - Most time calculations are in number of samples. Converters to time.Duration are provided.
 
+## Demo
+
+```
+go run examples/main.go | aplay
+```
+
 ## Dependencies 
 
 - github.com/rkusa/gm/math32 - math functions for float32
