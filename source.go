@@ -7,7 +7,10 @@ import (
 	"time"
 )
 
+// Audio source.
 type Source interface {
+	// Samples may return internal buffer.
+	// You must Copy first, if you plan to modify it.
 	Samples(channel int, offset, length Tz) Buffer
 	SampleRate() Tz
 	NumChannels() int
@@ -64,6 +67,7 @@ type MemSource struct {
 	Rate Tz
 }
 
+// Will return internal buffer. Copy it, if you want to modify.
 func (s MemSource) Samples(channel int, offset, length Tz) Buffer {
 	return s.Data[channel][offset : offset+length]
 }

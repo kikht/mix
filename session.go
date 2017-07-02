@@ -15,9 +15,6 @@ import (
 	"time"
 )
 
-// Number of samples
-type Tz int64
-
 type Session struct {
 	sampleRate Tz
 	pos        Tz
@@ -143,7 +140,7 @@ func (s *Session) insertRegion(r preparedRegion) {
 	}
 }
 
-// Mix length samples and write them to output.
+// Mix length samples and write them to output. Advances currernt position by length.
 func (s *Session) Play(length Tz) error {
 	if length < 0 {
 		return errors.New("Can't play length < 0")
