@@ -1,0 +1,25 @@
+language: go
+go_import_path: github.com/kikht/mix
+dist: trusty
+
+go:
+  - 1.0.x
+  - 1.1.x
+  - 1.2.x
+  - 1.3.x
+  - 1.4.x
+  - 1.5.x
+  - 1.6.x
+  - 1.7.x
+  - 1.8.x
+  - tip
+
+before_install:
+  - sudo apt-get -qq update
+  - sudo apt-get install -y libsox-dev
+
+install:
+  - go get -t -v ./...
+
+script:
+  - go test -v ./...
