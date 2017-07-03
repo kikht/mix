@@ -260,7 +260,7 @@ func (s *Session) DurationToTz(d time.Duration) Tz {
 	return Tz(d * time.Duration(s.sampleRate) / time.Second)
 }
 
-// SetPossition sets current Session position.
+// SetPosition sets current Session position.
 func (s *Session) SetPosition(pos Tz) {
 	s.pos = pos
 
