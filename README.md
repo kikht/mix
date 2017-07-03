@@ -1,6 +1,6 @@
 # Mix
 
-[![GoDoc](https://godoc.org/github.com/kikht/mix?status.svg)](https://godoc.org/github.com/kikht/mix)
+[![GoDoc](https://godoc.org/github.com/kikht/mix?status.svg)](https://godoc.org/github.com/kikht/mix) [![Go Report Card](https://goreportcard.com/badge/github.com/kikht/mix)](https://goreportcard.com/report/github.com/kikht/mix)
 
 Audio mixer for golang. Inspired by https://github.com/go-mix/mix but has following differences:
 - All audio operations are vectorized.

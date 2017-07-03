@@ -5,12 +5,12 @@ import "github.com/rkusa/gm/math32"
 // Buffer of audio data.
 type Buffer []float32
 
-// Create new buffer of length samples.
+// NewBuffer creates buffer of length samples.
 func NewBuffer(length Tz) Buffer {
 	return make([]float32, length)
 }
 
-// Fill buffer with zeros (silence).
+// Zero fills buffer with silence.
 func (dst Buffer) Zero() {
 	for i := range dst {
 		dst[i] = 0
@@ -24,20 +24,20 @@ func (src Buffer) Clone() Buffer {
 	return dst
 }
 
-// Copy samples from src into self scaling by gain.
+// CopyGain copies samples from src into dst scaling by gain.
 func (dst Buffer) CopyGain(src Buffer, gain float32) {
 	n := copy(dst, src)
 	dst[0:n].Gain(gain)
 }
 
-// Scale all samples by gain.
+// Gain scales all samples by gain.
 func (dst Buffer) Gain(gain float32) {
 	for i := range dst {
 		dst[i] *= gain
 	}
 }
 
-// Add samples from src to self.
+// Mix puts sum of src and dst into dst.
 func (dst Buffer) Mix(src Buffer) {
 	n := len(dst)
 	if len(src) < n {
@@ -48,7 +48,7 @@ func (dst Buffer) Mix(src Buffer) {
 	}
 }
 
-// Add samples from src to self scaling by gain.
+// MixGain puts sum of src scaled by gain and dst into dst.
 func (dst Buffer) MixGain(src Buffer, gain float32) {
 	n := len(dst)
 	if len(src) < n {
@@ -59,7 +59,7 @@ func (dst Buffer) MixGain(src Buffer, gain float32) {
 	}
 }
 
-// Scale with linearly changing gain from initial to target.
+// LinearRamp scales dst with linearly changing gain from initial to target.
 func (dst Buffer) LinearRamp(initial, target float32) {
 	delta := (target - initial) / float32(len(dst))
 	for i := range dst {
@@ -68,7 +68,7 @@ func (dst Buffer) LinearRamp(initial, target float32) {
 	}
 }
 
-// Scale with "sqrt-linear" changing gain from sqrt(initial) to sqrt(target). Useful for equal-power crossfade.
+// SqrtRamp scales dst with "sqrt-linear" changing gain from sqrt(initial) to sqrt(target). Useful for equal-power crossfade.
 func (dst Buffer) SqrtRamp(initial, target float32) {
 	a := (target - initial) / float32(len(dst))
 	b := initial

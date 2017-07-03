@@ -15,6 +15,7 @@ import (
 	"time"
 )
 
+// Session mixes collection of Regions. Output is done in 32-bit float WAV.
 type Session struct {
 	sampleRate Tz
 	pos        Tz
@@ -32,6 +33,7 @@ type Session struct {
 
 const numChannels = 2
 
+// NewSession creates Session with given sampleRate.
 func NewSession(sampleRate Tz) *Session {
 	sess := &Session{
 		sampleRate: sampleRate,
@@ -49,7 +51,7 @@ type Region struct {
 	FadeIn, FadeOut Tz      // Length of fades.
 }
 
-// Add region to the mix.
+// AddRegion adds region to the Session mix.
 func (s *Session) AddRegion(r Region) error {
 	if r.Source.SampleRate() != s.sampleRate {
 		return errors.New("Source sample rate is different from session")
@@ -140,7 +142,7 @@ func (s *Session) insertRegion(r preparedRegion) {
 	}
 }
 
-// Mix length samples and write them to output. Advances currernt position by length.
+// Play mixes length samples, writes them to output and advances currernt position by length.
 func (s *Session) Play(length Tz) error {
 	if length < 0 {
 		return errors.New("Can't play length < 0")
@@ -253,12 +255,12 @@ func (s *Session) mix(buffer []Buffer) {
 	s.active = s.active[0:lastActive]
 }
 
-// Convert time.Duration to number of samples with Session sample rate.
+// DurationToTz converts time.Duration to number of samples with Session sample rate.
 func (s *Session) DurationToTz(d time.Duration) Tz {
 	return Tz(d * time.Duration(s.sampleRate) / time.Second)
 }
 
-// Set playback position.
+// SetPossition sets current Session position.
 func (s *Session) SetPosition(pos Tz) {
 	s.pos = pos
 
@@ -276,17 +278,17 @@ func (s *Session) SetPosition(pos Tz) {
 	}
 }
 
-// Get current playback position.
+// Position returns current Session position.
 func (s *Session) Position() Tz {
 	return s.pos
 }
 
-// Get session sample rate.
+// SampleRate returns sample rate of Session.
 func (s *Session) SampleRate() Tz {
 	return s.sampleRate
 }
 
-// Set io.Writer to output mixed data.
+// SetOutput redirects session output to given io.Writer.
 func (s *Session) SetOutput(output io.Writer) {
 	s.output = output
 	s.numOut = 0
@@ -425,9 +427,8 @@ func (s *Session) updateHeader() error {
 		if err != nil {
 			if isPipeErr(err) {
 				return nil
-			} else {
-				return err
 			}
+			return err
 		}
 		binary.LittleEndian.PutUint32(buf, dataSize)
 		_, err = w.WriteAt(buf, dataSizeOff)
