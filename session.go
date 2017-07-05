@@ -16,19 +16,22 @@ import (
 )
 
 // Session mixes collection of Regions. Output is done in 32-bit float WAV.
+// Session implements Source, so it could be nested.
 type Session struct {
 	sampleRate Tz
 	pos        Tz
-	output     io.Writer
-	numOut     Tz
+	length     Tz
 
-	buffer  []Buffer
+	//TODO: separate wav (or other format) writer
+	output io.Writer
+	numOut Tz
+
+	buffer []Buffer
+
+	//TODO: separate regions collection & implement as tree
 	regions []*preparedRegion
 	rPos    int
 	active  []*preparedRegion
-	//TODO:
-	//out sample type
-	//data format
 }
 
 const numChannels = 2
@@ -81,6 +84,7 @@ func (s *Session) AddRegion(r Region) error {
 		return errors.New("FadeIn + fadeOut > length")
 	}
 
+	end := r.Begin + r.Length
 	if r.FadeIn > 0 {
 		fi := preparedRegion{
 			Src:    r.Source,
@@ -97,7 +101,7 @@ func (s *Session) AddRegion(r Region) error {
 		sr := preparedRegion{
 			Src:    r.Source,
 			Beg:    r.Begin + r.FadeIn,
-			End:    r.Begin + r.Length - r.FadeOut,
+			End:    end - r.FadeOut,
 			Off:    r.Offset + r.FadeIn,
 			VolBeg: r.Volume,
 			VolEnd: r.Volume,
@@ -108,14 +112,18 @@ func (s *Session) AddRegion(r Region) error {
 	if r.FadeOut > 0 {
 		fo := preparedRegion{
 			Src:    r.Source,
-			Beg:    r.Begin + r.Length - r.FadeOut,
-			End:    r.Begin + r.Length,
+			Beg:    end - r.FadeOut,
+			End:    end,
 			Off:    r.Offset + r.Length - r.FadeOut,
 			VolBeg: r.Volume,
 			VolEnd: 0,
 			Pan:    r.Pan,
 		}
 		s.insertRegion(fo)
+	}
+
+	if s.length < end {
+		s.length = end
 	}
 
 	return nil
@@ -147,18 +155,17 @@ func (s *Session) Play(length Tz) error {
 	if length < 0 {
 		return errors.New("Can't play length < 0")
 	}
+
+	buf := s.allocateBuffer(length)
+	s.mix(buf)
+
 	if s.numOut == 0 {
 		_, err := s.output.Write(s.wavHeader(-1))
 		if err != nil {
 			return err
 		}
 	}
-
-	buf := s.allocateBuffer(length)
-	s.mix(buf)
-	s.pos += length
 	s.numOut += length
-
 	err := s.writeBuffer(buf)
 	if err != nil {
 		return errors.New("error while writing audio buffer: " + err.Error())
@@ -253,6 +260,7 @@ func (s *Session) mix(buffer []Buffer) {
 		}
 	}
 	s.active = s.active[0:lastActive]
+	s.pos += length
 }
 
 // DurationToTz converts time.Duration to number of samples with Session sample rate.
@@ -260,9 +268,42 @@ func (s *Session) DurationToTz(d time.Duration) Tz {
 	return Tz(d * time.Duration(s.sampleRate) / time.Second)
 }
 
+// Length returns end of last region in Session
+func (s *Session) Length() Tz {
+	return s.length
+}
+
+// NumChannels returns number of channels in Session
+func (s *Session) NumChannels() int {
+	return numChannels
+}
+
+func (s *Session) Samples(channel int, offset, length Tz) Buffer {
+	// Fast-path for already mixed data
+	if offset+length == s.pos &&
+		len(s.buffer) > channel &&
+		Tz(len(s.buffer[channel])) == length {
+
+		return s.buffer[channel]
+	}
+
+	s.SetPosition(offset)
+	buf := s.allocateBuffer(length)
+	s.mix(buf)
+	return buf[channel]
+}
+
 // SetPosition sets current Session position.
 func (s *Session) SetPosition(pos Tz) {
+	if s.pos == pos {
+		return
+	}
 	s.pos = pos
+
+	// Shrink buffer for fast path in Samples()
+	for c := range s.buffer {
+		s.buffer[c] = s.buffer[c][0:0]
+	}
 
 	//Simple linear algorithm, interval tree will do it in log(n)
 	s.active = s.active[0:0]

@@ -15,7 +15,6 @@ type Source interface {
 	SampleRate() Tz
 	NumChannels() int
 	Length() Tz
-	Duration() time.Duration
 }
 
 // LoadSOX loads audio file using libsox.
@@ -57,6 +56,11 @@ func LoadSOX(path string) (Source, error) {
 	return res, nil
 }
 
+// Duration returns Length() of Source as time.Duration according to its SampleRate()
+func SourceDuration(s Source) time.Duration {
+	return time.Duration(s.Length() * Tz(time.Second) / s.SampleRate())
+}
+
 func soxSample(s sox.Sample) float32 {
 	const coef = 1.0 / (math.MaxInt32 + 1)
 	return float32(s) * coef
@@ -90,9 +94,4 @@ func (s MemSource) Length() Tz {
 		return 0
 	}
 	return Tz(len(s.Data[0]))
-}
-
-// Duration returns time.Duration of MemSource.
-func (s MemSource) Duration() time.Duration {
-	return time.Duration(s.Length() * Tz(time.Second) / s.SampleRate())
 }
