@@ -1,6 +1,6 @@
 language: go
 go_import_path: github.com/kikht/mix
-dist: trusty
+dist: xenial
 
 go:
   - 1.4.x
