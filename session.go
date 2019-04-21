@@ -265,7 +265,7 @@ func (s *Session) mix(buffer []Buffer) {
 
 // DurationToTz converts time.Duration to number of samples with Session sample rate.
 func (s *Session) DurationToTz(d time.Duration) Tz {
-	return Tz(d * time.Duration(s.sampleRate) / time.Second)
+	return DurationToTz(s, d)
 }
 
 // Length returns end of last region in Session
