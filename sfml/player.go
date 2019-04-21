@@ -5,7 +5,6 @@ import (
 	"github.com/kikht/mix"
 	"github.com/kikht/mix/gosfml2"
 	"github.com/rkusa/gm/math32"
-	"log"
 	"math"
 	"sync/atomic"
 	"time"
@@ -31,7 +30,7 @@ func Play(src mix.Source) (<-chan struct{}, error) {
 		if err != nil {
 			return nil, err
 		}
-		source.Store(src.Clone())
+		source.Store(src)
 		end = make(chan struct{})
 		go func() {
 			defer close(end)
@@ -44,7 +43,7 @@ func Play(src mix.Source) (<-chan struct{}, error) {
 		if current.(mix.Source).SampleRate() != src.SampleRate() {
 			return nil, errors.New("sources have different sample rate")
 		}
-		source.Store(src.Clone())
+		source.Store(src)
 	}
 	return end, nil
 }
@@ -73,5 +72,5 @@ func onGetData(data interface{}) (proceed bool, samples []int16) {
 
 func onSeek(time time.Duration, data interface{}) {
 	src := source.Load().(mix.Source)
-	atomic.StoreInt64(&position, int64(mix.DurationToTz(src, time)))
+	atomic.StoreInt64(&position, int64(mix.DurationToTz(time, src.SampleRate())))
 }

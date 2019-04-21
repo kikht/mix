@@ -21,11 +21,6 @@ func SourceDuration(s Source) time.Duration {
 	return time.Duration(s.Length() * Tz(time.Second) / s.SampleRate())
 }
 
-// DurationToTz converts time.Duration to number of samples with Source sample rate.
-func DurationToTz(s Source, d time.Duration) Tz {
-	return Tz(d * time.Duration(s.SampleRate()) / time.Second)
-}
-
 // MemSource is a Source that holds all necessary data in memory.
 type MemSource struct {
 	Data []Buffer
