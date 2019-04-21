@@ -45,6 +45,17 @@ func NewSession(sampleRate Tz) *Session {
 	return sess
 }
 
+// Returns shallow copy of Session.
+// Sources that are used in regions are not cloned.
+func (s *Session) Clone() Source {
+	clone := *s
+	clone.regions = make([]*preparedRegion, len(s.regions))
+	copy(clone.regions, s.regions)
+	clone.active = make([]*preparedRegion, len(s.active))
+	copy(clone.active, s.active)
+	return &clone
+}
+
 // Region defines where and how Source audio (or its part) will be played.
 type Region struct {
 	Source          Source  // Audio to play.
@@ -350,6 +361,7 @@ func (s *Session) allocateBuffer(length Tz) []Buffer {
 	return s.buffer
 }
 
+// Immutable region info with precomputed values
 type preparedRegion struct {
 	Src                 Source
 	Beg, End, Off       Tz

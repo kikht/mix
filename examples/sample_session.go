@@ -1,12 +1,11 @@
-package main
+package examples
 
 import (
 	"github.com/kikht/mix"
 	"github.com/kikht/mix/sox"
-	"os"
 )
 
-func main() {
+func SampleSession(audioPath string) *mix.Session {
 	const (
 		sampleRate = 44100
 		tempo      = 58
@@ -15,14 +14,13 @@ func main() {
 		length     = bars * whole
 	)
 	sess := mix.NewSession(sampleRate)
-	sess.SetOutput(os.Stdout)
 
 	// It's only example. Handle your errors properly!
-	kick, _ := sox.Load("examples/audio/kick.ogg")
-	snare, _ := sox.Load("examples/audio/snare.ogg")
-	hat, _ := sox.Load("examples/audio/hat.ogg")
-	crash, _ := sox.Load("examples/audio/crash.ogg")
-	guitar, _ := sox.Load("examples/audio/guitar.ogg")
+	kick, _ := sox.Load(audioPath + "kick.ogg")
+	snare, _ := sox.Load(audioPath + "snare.ogg")
+	hat, _ := sox.Load(audioPath + "hat.ogg")
+	crash, _ := sox.Load(audioPath + "crash.ogg")
+	guitar, _ := sox.Load(audioPath + "guitar.ogg")
 
 	drums := mix.NewSession(sampleRate)
 	drums.AddRegion(mix.Region{Source: crash, Begin: 0, Volume: 0.7, FadeOut: crash.Length()})
@@ -49,7 +47,5 @@ func main() {
 	sess.AddRegion(mix.Region{Source: guitar, Begin: 0, Volume: 1, FadeIn: whole})
 	sess.AddRegion(mix.Region{Source: guitar, Begin: 2 * whole, Volume: 1, FadeOut: whole})
 
-	for i := 0; i < bars; i++ {
-		sess.Play(whole)
-	}
+	return sess
 }

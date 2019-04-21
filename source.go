@@ -7,11 +7,13 @@ import (
 // Source is the interface that represents audio data.
 type Source interface {
 	// Samples may return internal buffer.
-	// You must Copy first, if you plan to modify it.
+	// You must Clone first, if you plan to modify it.
 	Samples(channel int, offset, length Tz) Buffer
 	SampleRate() Tz
 	NumChannels() int
 	Length() Tz
+	// Creates immutable read-only copy of Source
+	Clone() Source
 }
 
 // Duration returns Length() of Source as time.Duration according to its SampleRate()
@@ -52,4 +54,8 @@ func (s MemSource) Length() Tz {
 		return 0
 	}
 	return Tz(len(s.Data[0]))
+}
+
+func (s MemSource) Clone() Source {
+	return s
 }
