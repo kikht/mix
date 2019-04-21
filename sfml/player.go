@@ -30,7 +30,7 @@ func Play(src mix.Source) (<-chan struct{}, error) {
 		if err != nil {
 			return nil, err
 		}
-		source.Store(src)
+		source.Store(src.Clone())
 		end = make(chan struct{})
 		go func() {
 			defer close(end)
@@ -43,7 +43,7 @@ func Play(src mix.Source) (<-chan struct{}, error) {
 		if current.(mix.Source).SampleRate() != src.SampleRate() {
 			return nil, errors.New("sources have different sample rate")
 		}
-		source.Store(src)
+		source.Store(src.Clone())
 	}
 	return end, nil
 }
