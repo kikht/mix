@@ -16,7 +16,7 @@ go:
 
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install -y libsox-dev
+  - sudo apt-get install -y libsox-dev libcsfml-dev
 
 install:
   - go get -t -v ./...
