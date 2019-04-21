@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/kikht/mix"
+	"github.com/kikht/mix/sox"
 	"os"
 )
 
@@ -17,11 +18,11 @@ func main() {
 	sess.SetOutput(os.Stdout)
 
 	// It's only example. Handle your errors properly!
-	kick, _ := mix.LoadSOX("examples/audio/kick.ogg")
-	snare, _ := mix.LoadSOX("examples/audio/snare.ogg")
-	hat, _ := mix.LoadSOX("examples/audio/hat.ogg")
-	crash, _ := mix.LoadSOX("examples/audio/crash.ogg")
-	guitar, _ := mix.LoadSOX("examples/audio/guitar.ogg")
+	kick, _ := sox.Load("examples/audio/kick.ogg")
+	snare, _ := sox.Load("examples/audio/snare.ogg")
+	hat, _ := sox.Load("examples/audio/hat.ogg")
+	crash, _ := sox.Load("examples/audio/crash.ogg")
+	guitar, _ := sox.Load("examples/audio/guitar.ogg")
 
 	drums := mix.NewSession(sampleRate)
 	drums.AddRegion(mix.Region{Source: crash, Begin: 0, Volume: 0.7, FadeOut: crash.Length()})
