@@ -59,6 +59,21 @@ func (dst Buffer) MixGain(src Buffer, gain float32) {
 	}
 }
 
+// MixSqrtRamp puts sum of src with sqrt ramp gain and dst into dst.
+func (dst Buffer) MixSqrtRamp(src Buffer, initial, target float32) {
+	n := len(dst)
+	if len(src) < n {
+		n = len(src)
+	}
+	a := (target - initial) / float32(n)
+	b := initial
+	fi := float32(0)
+	for i := 0; i < n; i++ {
+		dst[i] += src[i] * math32.Sqrt(a*fi+b)
+		fi += 1
+	}
+}
+
 // LinearRamp scales dst with linearly changing gain from initial to target.
 func (dst Buffer) LinearRamp(initial, target float32) {
 	delta := (target - initial) / float32(len(dst))

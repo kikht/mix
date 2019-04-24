@@ -244,24 +244,32 @@ func (s *Session) mix(buffer []Buffer) {
 
 		for i := 0; i < schan; i++ {
 			src := r.Src.Samples(i, r.Off+rOff, rLen)
-			var vol float32
+			init, targ := r.VolBeg, r.VolEnd
 
-			if r.VolBeg == r.VolEnd { //simple region fast path
-				vol = r.VolBeg
-			} else {
-				vol = 1
-				coef := (r.VolEnd*r.VolEnd - r.VolBeg*r.VolBeg) /
-					float32(r.End-r.Beg)
-				init := r.VolBeg*r.VolBeg + coef*float32(rOff)
-				targ := r.VolBeg*r.VolBeg + coef*float32(rOff+rLen)
-				src = src.Clone()
-				src.SqrtRamp(init, targ)
+			if init != targ {
+				initsqr := init * init
+				coef := (targ*targ - initsqr) / float32(r.End-r.Beg)
+				init = initsqr + coef*float32(rOff)
+				targ = initsqr + coef*float32(rOff+rLen)
 			}
 
 			for j := 0; j < numChannels; j++ {
 				dst := buffer[j][bOff:bEnd]
 				assert(len(src) == len(dst))
-				dst.MixGain(src, gain[i][j]*vol)
+				if init == targ {
+					g := init * gain[i][j]
+					switch {
+					case g == 1:
+						dst.Mix(src)
+					case g < 1e-8:
+						//do nothing
+					default:
+						dst.MixGain(src, g)
+					}
+				} else {
+					g := gain[i][j] * gain[i][j]
+					dst.MixSqrtRamp(src, g*init, g*targ)
+				}
 			}
 		}
 
