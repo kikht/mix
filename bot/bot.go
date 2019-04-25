@@ -5,11 +5,14 @@ import (
 	"log"
 	"os"
 	"strings"
-
-	"github.com/kikht/mix/controller"
 )
 
-func Run(control *controller.Controller) {
+type Controller interface {
+	Actions() [][]string
+	Action(action string) error
+}
+
+func Run(control Controller) {
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
 	if err != nil {
 		log.Panic(err)
@@ -28,26 +31,20 @@ func Run(control *controller.Controller) {
 		buttons [][]tgbotapi.KeyboardButton
 		row     []tgbotapi.KeyboardButton
 	)
-	for _, a := range control.Events() {
-		row = append(row, tgbotapi.NewKeyboardButton(a))
-		if len(row) == rowSize {
+	for _, list := range control.Actions() {
+		for _, act := range list {
+			row = append(row, tgbotapi.NewKeyboardButton(act))
+			if len(row) == rowSize {
+				buttons = append(buttons, row)
+				row = make([]tgbotapi.KeyboardButton, 0)
+			}
+		}
+		if len(row) != 0 {
 			buttons = append(buttons, row)
 			row = make([]tgbotapi.KeyboardButton, 0)
 		}
 	}
-	buttons = append(buttons, row)
-	row = make([]tgbotapi.KeyboardButton, 0)
-	for _, a := range control.Ambience() {
-		row = append(row, tgbotapi.NewKeyboardButton(a))
-		if len(row) == rowSize {
-			buttons = append(buttons, row)
-			row = make([]tgbotapi.KeyboardButton, 0)
-		}
-	}
-	buttons = append(buttons, row)
-	log.Println(buttons)
 	keyboard := tgbotapi.NewReplyKeyboard(buttons...)
-	log.Println(keyboard)
 
 	for {
 		select {

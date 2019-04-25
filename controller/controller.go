@@ -180,13 +180,17 @@ func (c *Controller) Events() []string {
 	return res
 }
 
-func (c *Controller) Actions() []string {
-	var res []string
-	for k := range c.event {
-		res = append(res, k)
+func (c *Controller) Actions() [][]string {
+	res := make([][]string, 3)
+	for k, v := range c.event {
+		if v.Over {
+			res[0] = append(res[0], k)
+		} else {
+			res[1] = append(res[1], k)
+		}
 	}
 	for k := range c.ambience {
-		res = append(res, k)
+		res[2] = append(res[2], k)
 	}
 	return res
 }
