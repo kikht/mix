@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-const chunkSize = 2048
-
 var (
 	source   atomic.Value
 	position int64
