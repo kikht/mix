@@ -1,11 +1,10 @@
 package sfml
 
 import (
-	"errors"
 	"github.com/kikht/mix"
 	"github.com/kikht/mix/gosfml2"
-	"github.com/rkusa/gm/math32"
-	"math"
+
+	"errors"
 	"sync/atomic"
 	"time"
 )
@@ -17,6 +16,7 @@ var (
 	end      chan struct{}
 )
 
+// Deprecated, use sfml.Stream
 func Play(src mix.Source) (<-chan struct{}, error) {
 	if src.NumChannels() != 2 {
 		return nil, errors.New("only stereo sources are supported")
@@ -44,11 +44,6 @@ func Play(src mix.Source) (<-chan struct{}, error) {
 		source.Store(src.Clone())
 	}
 	return end, nil
-}
-
-// simple limiter
-func norm(v float32) int16 {
-	return int16(math.MaxInt16 * v / (1 + math32.Abs(v)))
 }
 
 func onGetData(data interface{}) (proceed bool, samples []int16) {

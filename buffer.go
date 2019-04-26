@@ -59,7 +59,7 @@ func (dst Buffer) MixGain(src Buffer, gain float32) {
 	}
 }
 
-// MixSqrtRamp puts sum of src with sqrt ramp gain and dst into dst.
+// MixSqrtRamp puts sum of src with SqrtRamp gain and dst into dst.
 func (dst Buffer) MixSqrtRamp(src Buffer, initial, target float32) {
 	n := len(dst)
 	if len(src) < n {

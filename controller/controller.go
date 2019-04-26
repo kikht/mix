@@ -1,49 +1,43 @@
 package controller
 
 import (
-	"errors"
-	"log"
+	"fmt"
 	"time"
 
 	"github.com/kikht/mix"
 )
+
+type Ambience mix.Source
+type Effect mix.Source
+type Music struct {
+	mix.Source
+	After string
+}
 
 type Controller struct {
 	sampleRate  mix.Tz
 	ahead, fade mix.Tz
 	start       time.Time
 
-	listener ControllerListener
+	player mix.Player
 
 	ambience map[string]Ambience
-	event    map[string]Event
+	music    map[string]Music
+	effect   map[string]Effect
 
 	mix *mix.Session
 	cur string
 }
 
-type ControllerListener func(source mix.Source)
-
-type Ambience struct {
-	mix.Source
-	Label string
-}
-
-type Event struct {
-	mix.Source
-	Label string
-	Over  bool
-	After string
-}
-
-func NewController(sampleRate mix.Tz, listener ControllerListener) *Controller {
+func NewController(sampleRate mix.Tz, player mix.Player) *Controller {
 	return &Controller{
 		sampleRate: sampleRate,
 		ahead:      mix.DurationToTz(300*time.Millisecond, sampleRate),
 		fade:       mix.DurationToTz(100*time.Millisecond, sampleRate),
-		listener:   listener,
+		player:     player,
 		ambience:   make(map[string]Ambience),
-		event:      make(map[string]Event),
+		music:      make(map[string]Music),
+		effect:     make(map[string]Effect),
 	}
 }
 
@@ -51,14 +45,16 @@ func (c *Controller) Mix() *mix.Session {
 	return c.mix
 }
 
-func (c *Controller) AddAmbience(a Ambience) {
-	log.Println("adding ambience", a.Label)
-	c.ambience[a.Label] = a
+func (c *Controller) AddAmbience(label string, sound mix.Source) {
+	c.ambience[label] = Ambience(sound)
 }
 
-func (c *Controller) AddEvent(e Event) {
-	log.Println("adding event", e.Label)
-	c.event[e.Label] = e
+func (c *Controller) AddMusic(label string, sound mix.Source, after string) {
+	c.music[label] = Music{sound, after}
+}
+
+func (c *Controller) AddEffect(label string, sound mix.Source) {
+	c.effect[label] = Effect(sound)
 }
 
 func (c *Controller) pos() mix.Tz {
@@ -72,7 +68,7 @@ func (c *Controller) pos() mix.Tz {
 func (c *Controller) SetAmbience(label string) error {
 	amb, ok := c.ambience[label]
 	if !ok {
-		return errors.New("ambience not found")
+		return fmt.Errorf("Ambience %s is not found", label)
 	}
 
 	pos := c.pos() + c.ahead - c.fade
@@ -98,60 +94,75 @@ func (c *Controller) SetAmbience(label string) error {
 
 	c.cur = label
 	c.mix = newMix
-	c.listener(c.mix)
+	c.player.Play(c.mix)
 	return nil
 }
 
-func (c *Controller) FireEvent(label string) error {
-	ev, ok := c.event[label]
+func (c *Controller) PlayMusic(label string) error {
+	mus, ok := c.music[label]
 	if !ok {
-		return errors.New("event not found")
+		return fmt.Errorf("Music %s is not found", label)
 	}
-	ambLabel := ev.After
+	ambLabel := mus.After
 	if ambLabel == "" {
 		ambLabel = c.cur
 	}
 	amb, ok := c.ambience[ambLabel]
 	if !ok {
-		return errors.New("ambience not found")
+		return fmt.Errorf("Ambience %s after music %s is not found",
+			ambLabel, label)
 	}
 
 	pos := c.pos() + c.ahead - c.fade
 	oldMix := c.mix
-	var newMix *mix.Session
-	if ev.Over {
-		if oldMix != nil {
-			newMix = oldMix
-		} else {
-			newMix = mix.NewSession(c.sampleRate)
-		}
-
-	} else {
-		newMix = mix.NewSession(c.sampleRate)
-		//Fade out of current ambience
-		if oldMix != nil {
-			newMix.AddRegion(mix.Region{
-				Source:  oldMix,
-				Begin:   0,
-				Offset:  0,
-				Volume:  1,
-				Length:  pos,
-				FadeOut: c.fade,
-			})
-		}
-		//Next ambience with fade in
-		eventEnd := pos + ev.Length() - c.fade
+	newMix := mix.NewSession(c.sampleRate)
+	//Fade out of current ambience
+	if oldMix != nil {
 		newMix.AddRegion(mix.Region{
-			Source: amb,
-			Begin:  eventEnd,
-			Offset: eventEnd,
-			Volume: 1,
-			FadeIn: c.fade,
+			Source:  oldMix,
+			Begin:   0,
+			Offset:  0,
+			Volume:  1,
+			Length:  pos,
+			FadeOut: c.fade,
 		})
 	}
-	//Event sound itself
+	//Music itself
 	newMix.AddRegion(mix.Region{
-		Source:  ev,
+		Source:  mus,
+		Begin:   pos,
+		Offset:  0,
+		Volume:  1,
+		FadeIn:  c.fade,
+		FadeOut: c.fade,
+	})
+	//Next ambience with fade in
+	eventEnd := pos + mus.Length() - c.fade
+	newMix.AddRegion(mix.Region{
+		Source: amb,
+		Begin:  eventEnd,
+		Offset: eventEnd,
+		Volume: 1,
+		FadeIn: c.fade,
+	})
+
+	c.mix = newMix
+	c.player.Play(c.mix)
+	return nil
+}
+
+func (c *Controller) FireEffect(label string) error {
+	eff, ok := c.effect[label]
+	if !ok {
+		return fmt.Errorf("Music %s is not found", label)
+	}
+
+	pos := c.pos() + c.ahead - c.fade
+	if c.mix == nil {
+		c.mix = mix.NewSession(c.sampleRate)
+	}
+	c.mix.AddRegion(mix.Region{
+		Source:  eff,
 		Begin:   pos,
 		Offset:  0,
 		Volume:  1,
@@ -159,35 +170,17 @@ func (c *Controller) FireEvent(label string) error {
 		FadeOut: c.fade,
 	})
 
-	c.mix = newMix
-	c.listener(c.mix)
+	c.player.Play(c.mix)
 	return nil
-}
-
-func (c *Controller) Ambience() []string {
-	var res []string
-	for k := range c.ambience {
-		res = append(res, k)
-	}
-	return res
-}
-
-func (c *Controller) Events() []string {
-	var res []string
-	for k := range c.event {
-		res = append(res, k)
-	}
-	return res
 }
 
 func (c *Controller) Actions() [][]string {
 	res := make([][]string, 3)
-	for k, v := range c.event {
-		if v.Over {
-			res[0] = append(res[0], k)
-		} else {
-			res[1] = append(res[1], k)
-		}
+	for k := range c.effect {
+		res[0] = append(res[0], k)
+	}
+	for k := range c.music {
+		res[1] = append(res[1], k)
 	}
 	for k := range c.ambience {
 		res[2] = append(res[2], k)
@@ -196,9 +189,10 @@ func (c *Controller) Actions() [][]string {
 }
 
 func (c *Controller) Action(label string) error {
-	_, ok := c.event[label]
-	if ok {
-		return c.FireEvent(label)
+	if _, ok := c.effect[label]; ok {
+		return c.FireEffect(label)
+	} else if _, ok = c.music[label]; ok {
+		return c.PlayMusic(label)
 	} else {
 		return c.SetAmbience(label)
 	}

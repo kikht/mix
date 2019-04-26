@@ -3,7 +3,10 @@ package sfml
 import (
 	"github.com/kikht/mix"
 	"github.com/kikht/mix/gosfml2"
-	"runtime"
+
+	"github.com/rkusa/gm/math32"
+
+	"math"
 	"sync/atomic"
 	"time"
 )
@@ -85,13 +88,11 @@ func onStreamSeek(time time.Duration, data interface{}) {
 	}
 }
 
-func (s *Stream) Play(src mix.Source) (<-chan struct{}, error) {
-	orig := atomic.LoadInt64(s.state)
-	s.sources[(orig&1)^1] = src
-	for !atomic.CompareAndSwapInt64(s.state, orig, orig^1) {
-		runtime.Gosched()
-		orig = atomic.LoadInt64(s.state)
-	}
+func (s *Stream) End() <-chan struct{} {
+	return s.end
+}
+
+func (s *Stream) startPlaying() {
 	if s.handler.GetStatus() != gosfml2.SoundStatusPlaying {
 		s.end = make(chan struct{})
 		go func() {
@@ -102,5 +103,33 @@ func (s *Stream) Play(src mix.Source) (<-chan struct{}, error) {
 			}
 		}()
 	}
-	return s.end, nil
+}
+
+func (s *Stream) Play(src mix.Source) {
+	//TODO: check source
+	orig := atomic.LoadInt64(s.state)
+	s.sources[(orig&1)^1] = src
+	for !atomic.CompareAndSwapInt64(s.state, orig, orig^1) {
+		orig = atomic.LoadInt64(s.state)
+	}
+	s.startPlaying()
+}
+
+func (s *Stream) Switch(generator mix.SourceMutator) {
+	for {
+		orig := atomic.LoadInt64(s.state)
+		cur := s.sources[orig&1]
+		pos := orig & posMask
+		//TODO: check source
+		s.sources[(orig&1)^1] = generator(cur, mix.Tz(pos))
+		if atomic.CompareAndSwapInt64(s.state, orig, orig^1) {
+			break
+		}
+	}
+	s.startPlaying()
+}
+
+// simple limiter
+func norm(v float32) int16 {
+	return int16(math.MaxInt16 * v / (1 + math32.Abs(v)))
 }
