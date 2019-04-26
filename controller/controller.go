@@ -77,14 +77,14 @@ func (c *Controller) Ambience(label string) (mix.SourceMutator, error) {
 				Begin:   0,
 				Offset:  0,
 				Volume:  1,
-				Length:  pos - c.fade,
+				Length:  pos + c.fade,
 				FadeOut: c.fade,
 			})
 		}
 		next.AddRegion(mix.Region{
 			Source: amb,
-			Begin:  pos - c.fade,
-			Offset: pos - c.fade,
+			Begin:  pos,
+			Offset: pos,
 			Volume: 1,
 			FadeIn: c.fade,
 		})
@@ -120,14 +120,14 @@ func (c *Controller) Music(label string) (mix.SourceMutator, error) {
 				Begin:   0,
 				Offset:  0,
 				Volume:  1,
-				Length:  pos - c.fade,
+				Length:  pos + c.fade,
 				FadeOut: c.fade,
 			})
 		}
 		//Music itself
 		next.AddRegion(mix.Region{
 			Source:  mus,
-			Begin:   pos - c.fade,
+			Begin:   pos,
 			Offset:  0,
 			Volume:  1,
 			FadeIn:  c.fade,
