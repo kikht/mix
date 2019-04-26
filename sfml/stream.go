@@ -6,6 +6,7 @@ import (
 
 	"github.com/rkusa/gm/math32"
 
+	"log"
 	"math"
 	"sync/atomic"
 	"time"
@@ -94,6 +95,7 @@ func (s *Stream) End() <-chan struct{} {
 
 func (s *Stream) startPlaying() {
 	if s.handler.GetStatus() != gosfml2.SoundStatusPlaying {
+		log.Println("Start of play")
 		s.end = make(chan struct{})
 		go func() {
 			defer close(s.end)
@@ -106,6 +108,7 @@ func (s *Stream) startPlaying() {
 }
 
 func (s *Stream) Play(src mix.Source) {
+	log.Println("Stream.Play()")
 	//TODO: check source
 	orig := atomic.LoadInt64(s.state)
 	s.sources[(orig&1)^1] = src
