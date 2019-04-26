@@ -124,12 +124,20 @@ func (s *Stream) Switch(generator mix.SourceMutator) {
 		cur := s.sources[orig&1]
 		pos := orig & posMask
 		//TODO: check source
-		s.sources[(orig&1)^1] = generator(cur, mix.Tz(pos))
+		s.sources[(orig&1)^1] = generator.Mutate(cur, mix.Tz(pos))
 		if atomic.CompareAndSwapInt64(s.state, orig, orig^1) {
 			break
 		}
 	}
 	s.startPlaying()
+}
+
+func (s *Stream) Pos() mix.Tz {
+	return mix.Tz(atomic.LoadInt64(s.state) & posMask)
+}
+
+func (s *Stream) ChunkSize() mix.Tz {
+	return chunkSize
 }
 
 // simple limiter

@@ -14,7 +14,7 @@ type SwitchController struct {
 func NewSwitchController(sampleRate mix.Tz, player mix.SwitchPlayer) *SwitchController {
 	fade := mix.DurationToTz(100*time.Millisecond, sampleRate)
 	return &SwitchController{
-		Controller: NewController(fade, sampleRate),
+		Controller: NewController(fade, sampleRate, player.ChunkSize()),
 		player:     player,
 	}
 }

@@ -196,6 +196,15 @@ func (s *Session) mix(buffer [2]mix.Buffer) {
 		rLen := rEnd - r.Beg - rOff
 		bEnd -= s.pos
 
+		if end < r.End {
+			s.active[lastActive] = r
+			lastActive++
+		}
+
+		if r.Src == nil {
+			continue
+		}
+
 		var gain [numChannels][numChannels]float32
 		schan := r.Src.NumChannels()
 		switch schan {
@@ -238,11 +247,6 @@ func (s *Session) mix(buffer [2]mix.Buffer) {
 					dst.MixSqrtRamp(src, g*init, g*targ)
 				}
 			}
-		}
-
-		if end < r.End {
-			s.active[lastActive] = r
-			lastActive++
 		}
 	}
 	s.active = s.active[0:lastActive]

@@ -17,7 +17,7 @@ type AheadController struct {
 func NewAheadController(sampleRate mix.Tz, player mix.Player) *AheadController {
 	fade := mix.DurationToTz(100*time.Millisecond, sampleRate)
 	return &AheadController{
-		Controller: NewController(fade, sampleRate),
+		Controller: NewController(fade, sampleRate, player.ChunkSize()),
 		ahead:      mix.DurationToTz(300*time.Millisecond, sampleRate),
 		player:     player,
 	}
@@ -28,7 +28,7 @@ func (c *AheadController) Action(label string) error {
 	if err != nil {
 		return err
 	}
-	c.mix = gen(c.mix, c.pos())
+	c.mix = gen.Mutate(c.mix, c.pos())
 	c.player.Play(c.mix)
 	return nil
 }

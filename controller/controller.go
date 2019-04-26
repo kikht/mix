@@ -6,6 +6,7 @@ import (
 
 	"fmt"
 	"log"
+	"sort"
 )
 
 type Ambience mix.Source
@@ -16,7 +17,7 @@ type Music struct {
 }
 
 type Controller struct {
-	fade, sampleRate mix.Tz
+	fade, sampleRate, chunkSize mix.Tz
 
 	ambience map[string]Ambience
 	music    map[string]Music
@@ -25,13 +26,14 @@ type Controller struct {
 	lastAmbience string
 }
 
-func NewController(fade, sampleRate mix.Tz) Controller {
+func NewController(fade, sampleRate, chunkSize mix.Tz) Controller {
 	return Controller{
 		fade:       fade,
 		sampleRate: sampleRate,
 		ambience:   make(map[string]Ambience),
 		music:      make(map[string]Music),
 		effect:     make(map[string]Effect),
+		chunkSize:  chunkSize,
 	}
 }
 
@@ -52,12 +54,15 @@ func (c *Controller) Actions() [][]string {
 	for k := range c.effect {
 		res[0] = append(res[0], k)
 	}
+	sort.Strings(res[0])
 	for k := range c.music {
 		res[1] = append(res[1], k)
 	}
+	sort.Strings(res[1])
 	for k := range c.ambience {
 		res[2] = append(res[2], k)
 	}
+	sort.Strings(res[2])
 	return res
 }
 
@@ -67,31 +72,7 @@ func (c *Controller) Ambience(label string) (mix.SourceMutator, error) {
 		return nil, fmt.Errorf("Ambience %s is not found", label)
 	}
 	c.lastAmbience = label
-
-	mutator := func(cur mix.Source, pos mix.Tz) mix.Source {
-		log.Println("Generating ambience", pos)
-		//TODO: reuse session to prevent allocations
-		next := session.NewSession(c.sampleRate, true)
-		if cur != nil {
-			next.AddRegion(session.Region{
-				Source:  cur,
-				Begin:   0,
-				Offset:  0,
-				Volume:  1,
-				Length:  pos + c.fade,
-				FadeOut: c.fade,
-			})
-		}
-		next.AddRegion(session.Region{
-			Source: amb,
-			Begin:  pos,
-			Offset: pos,
-			Volume: 1,
-			FadeIn: c.fade,
-		})
-		return next
-	}
-	return mutator, nil
+	return session.NewAmbience(amb, c.fade, c.chunkSize), nil
 }
 
 func (c *Controller) Music(label string) (mix.SourceMutator, error) {
@@ -109,43 +90,7 @@ func (c *Controller) Music(label string) (mix.SourceMutator, error) {
 			ambLabel, label)
 	}
 	c.lastAmbience = label
-
-	mutator := func(cur mix.Source, pos mix.Tz) mix.Source {
-		log.Println("Generating music", pos)
-		//TODO: reuse session to prevent allocations
-		next := session.NewSession(c.sampleRate, true)
-		//Fade out of current ambience
-		if cur != nil {
-			next.AddRegion(session.Region{
-				Source:  cur,
-				Begin:   0,
-				Offset:  0,
-				Volume:  1,
-				Length:  pos + c.fade,
-				FadeOut: c.fade,
-			})
-		}
-		//Music itself
-		next.AddRegion(session.Region{
-			Source:  mus,
-			Begin:   pos,
-			Offset:  0,
-			Volume:  1,
-			FadeIn:  c.fade,
-			FadeOut: c.fade,
-		})
-		//Next ambience with fade in
-		eventEnd := pos + mus.Length() - c.fade
-		next.AddRegion(session.Region{
-			Source: amb,
-			Begin:  eventEnd,
-			Offset: eventEnd,
-			Volume: 1,
-			FadeIn: c.fade,
-		})
-		return next
-	}
-	return mutator, nil
+	return session.NewMusic(mus, amb, c.fade, c.chunkSize), nil
 }
 
 func (c *Controller) Effect(label string) (mix.SourceMutator, error) {
@@ -173,7 +118,7 @@ func (c *Controller) Effect(label string) (mix.SourceMutator, error) {
 		})
 		return next
 	}
-	return mutator, nil
+	return mix.SourceMutatorFunc(mutator), nil
 }
 
 func (c *Controller) Action(label string) (mix.SourceMutator, error) {
