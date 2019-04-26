@@ -1,32 +1,22 @@
-package mix
+package session
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/binary"
+	"github.com/kikht/mix"
+
 	"errors"
 	"fmt"
-	"io"
-	"io/ioutil"
-	"math"
-	"os"
 	"sort"
-	"syscall"
-	"time"
 )
 
 // Session mixes collection of Regions. Output is done in 32-bit float WAV.
 // Session implements Source, so it could be nested.
 type Session struct {
-	sampleRate Tz
-	pos        Tz
-	length     Tz
+	sampleRate mix.Tz
+	pos        mix.Tz
+	length     mix.Tz
+	forgetPast bool
 
-	//TODO: separate wav (or other format) writer
-	output io.Writer
-	numOut Tz
-
-	buffer []Buffer
+	buffer [numChannels]mix.Buffer
 
 	//TODO: separate regions collection & implement as tree
 	regions []*preparedRegion
@@ -34,35 +24,35 @@ type Session struct {
 	active  []*preparedRegion
 }
 
+// Region defines where and how Source audio (or its part) will be played.
+type Region struct {
+	Source          mix.Source // Audio to play.
+	Begin           mix.Tz     // Time to begin playing in session samples.
+	Offset, Length  mix.Tz     // Offset and Length in Source that will be played.
+	Volume, Pan     float32    // Volume gain and stereo panning.
+	FadeIn, FadeOut mix.Tz     // Length of fades.
+}
+
 const numChannels = 2
 
 // NewSession creates Session with given sampleRate.
-func NewSession(sampleRate Tz) *Session {
+func NewSession(sampleRate mix.Tz, forgetPast bool) *Session {
 	sess := &Session{
 		sampleRate: sampleRate,
+		forgetPast: forgetPast,
 	}
-	sess.SetOutput(ioutil.Discard)
 	return sess
 }
 
 // Returns shallow copy of Session.
 // Sources that are used in regions are not cloned.
-func (s *Session) Clone() Source {
+func (s *Session) Clone() mix.Source {
 	clone := *s
 	clone.regions = make([]*preparedRegion, len(s.regions))
 	copy(clone.regions, s.regions)
 	clone.active = make([]*preparedRegion, len(s.active))
 	copy(clone.active, s.active)
 	return &clone
-}
-
-// Region defines where and how Source audio (or its part) will be played.
-type Region struct {
-	Source          Source  // Audio to play.
-	Begin           Tz      // Time to begin playing in session samples.
-	Offset, Length  Tz      // Offset and Length in Source that will be played.
-	Volume, Pan     float32 // Volume gain and stereo panning.
-	FadeIn, FadeOut Tz      // Length of fades.
 }
 
 // AddRegion adds region to the Session mix.
@@ -161,38 +151,8 @@ func (s *Session) insertRegion(r preparedRegion) {
 	}
 }
 
-// Play mixes length samples, writes them to output and advances currernt position by length.
-func (s *Session) Play(length Tz) error {
-	if length < 0 {
-		return errors.New("Can't play length < 0")
-	}
-
-	buf := s.allocateBuffer(length)
-	s.mix(buf)
-
-	if s.numOut == 0 {
-		_, err := s.output.Write(s.wavHeader(-1))
-		if err != nil {
-			return err
-		}
-	}
-	s.numOut += length
-	err := s.writeBuffer(buf)
-	if err != nil {
-		return errors.New("error while writing audio buffer: " + err.Error())
-	}
-	err = s.updateHeader()
-	if err != nil {
-		return errors.New("error while updating WAV header: " + err.Error())
-	}
-	return nil
-}
-
-func (s *Session) mix(buffer []Buffer) {
-	if len(buffer) != numChannels {
-		panic("invalid buffer")
-	}
-	length := Tz(len(buffer[0]))
+func (s *Session) mix(buffer [2]mix.Buffer) {
+	length := mix.Tz(len(buffer[0]))
 	if length == 0 {
 		return
 	}
@@ -204,15 +164,22 @@ func (s *Session) mix(buffer []Buffer) {
 		if r.Beg < end {
 			//log.Println("mix: New active region", r)
 			s.active = append(s.active, r)
+			if s.forgetPast {
+				s.regions[s.rPos] = nil
+			}
 		} else {
 			break
 		}
+	}
+	if s.forgetPast {
+		s.regions = s.regions[s.rPos:]
+		s.rPos = 0
 	}
 
 	// Mix active regions and filter completed
 	lastActive := 0
 	for _, r := range s.active {
-		var rOff, bOff Tz
+		var rOff, bOff mix.Tz
 		if r.Beg < s.pos {
 			rOff = s.pos - r.Beg
 		} else {
@@ -233,9 +200,9 @@ func (s *Session) mix(buffer []Buffer) {
 		schan := r.Src.NumChannels()
 		switch schan {
 		case 1:
-			gain[0][0], gain[0][1] = PanMonoGain(r.Pan)
+			gain[0][0], gain[0][1] = mix.PanMonoGain(r.Pan)
 		case 2:
-			gain[0][0], gain[0][1], gain[1][0], gain[1][1] = PanStereoGain(r.Pan)
+			gain[0][0], gain[0][1], gain[1][0], gain[1][1] = mix.PanStereoGain(r.Pan)
 		default:
 			panic("Invalid number of channels")
 		}
@@ -282,13 +249,8 @@ func (s *Session) mix(buffer []Buffer) {
 	s.pos += length
 }
 
-// DurationToTz converts time.Duration to number of samples with Session sample rate.
-func (s *Session) DurationToTz(d time.Duration) Tz {
-	return DurationToTz(d, s.sampleRate)
-}
-
 // Length returns end of last region in Session
-func (s *Session) Length() Tz {
+func (s *Session) Length() mix.Tz {
 	return s.length
 }
 
@@ -297,11 +259,11 @@ func (s *Session) NumChannels() int {
 	return numChannels
 }
 
-func (s *Session) Samples(channel int, offset, length Tz) Buffer {
+func (s *Session) Samples(channel int, offset, length mix.Tz) mix.Buffer {
 	// Fast-path for already mixed data
 	if offset+length == s.pos &&
 		len(s.buffer) > channel &&
-		Tz(len(s.buffer[channel])) == length {
+		mix.Tz(len(s.buffer[channel])) == length {
 
 		return s.buffer[channel]
 	}
@@ -313,9 +275,12 @@ func (s *Session) Samples(channel int, offset, length Tz) Buffer {
 }
 
 // SetPosition sets current Session position.
-func (s *Session) SetPosition(pos Tz) {
+func (s *Session) SetPosition(pos mix.Tz) {
 	if s.pos == pos {
 		return
+	}
+	if pos < s.pos && s.forgetPast {
+		panic("Can not rewind forgetful session")
 	}
 	s.pos = pos
 
@@ -339,31 +304,22 @@ func (s *Session) SetPosition(pos Tz) {
 }
 
 // Position returns current Session position.
-func (s *Session) Position() Tz {
+func (s *Session) Position() mix.Tz {
 	return s.pos
 }
 
 // SampleRate returns sample rate of Session.
-func (s *Session) SampleRate() Tz {
+func (s *Session) SampleRate() mix.Tz {
 	return s.sampleRate
 }
 
-// SetOutput redirects session output to given io.Writer.
-func (s *Session) SetOutput(output io.Writer) {
-	s.output = output
-	s.numOut = 0
-}
-
-func (s *Session) allocateBuffer(length Tz) []Buffer {
-	if len(s.buffer) != numChannels {
-		s.buffer = make([]Buffer, numChannels)
-	}
+func (s *Session) allocateBuffer(length mix.Tz) [2]mix.Buffer {
 	for i := 0; i < numChannels; i++ {
-		if Tz(cap(s.buffer[i])) >= length {
+		if mix.Tz(cap(s.buffer[i])) >= length {
 			s.buffer[i] = s.buffer[i][0:length]
 			s.buffer[i].Zero()
 		} else {
-			s.buffer[i] = NewBuffer(length)
+			s.buffer[i] = mix.NewBuffer(length)
 		}
 	}
 	return s.buffer
@@ -371,143 +327,14 @@ func (s *Session) allocateBuffer(length Tz) []Buffer {
 
 // Immutable region info with precomputed values
 type preparedRegion struct {
-	Src                 Source
-	Beg, End, Off       Tz
+	Src                 mix.Source
+	Beg, End, Off       mix.Tz
 	VolBeg, VolEnd, Pan float32
 }
 
 func (r preparedRegion) String() string {
 	return fmt.Sprintf("{Beg=%v End=%v Off=%v Vol=%4.2f:%4.2f Pan=%+5.2f}",
 		r.Beg, r.End, r.Off, r.VolBeg, r.VolEnd, r.Pan)
-}
-
-// WAV functions
-
-const (
-	bitsPerSample      = 32
-	sampleFormat       = 3 //for float, 1 for PCM
-	sampleFormatSuffix = "\x00\x00\x00\x00\x10\x00\x80\x00\x00\xAA\x00\x38\x9B\x71"
-	blockAlign         = numChannels * bitsPerSample / 8
-
-	extSize        = 2 + 4 + 16
-	fmtSize        = 2 + 2 + 4 + 4 + 2 + 2 + 2 + extSize
-	riffSizeOff    = 4
-	riffHeaderSize = 4 + 4 + 4 + fmtSize + 4 + 4
-	dataSizeOff    = riffHeaderSize + 4
-)
-
-func (s *Session) wavSizes(numSamples Tz) (riffSize, dataSize uint32) {
-	if numSamples < 0 {
-		riffSize = math.MaxUint32
-		dataSize = riffSize - riffHeaderSize
-	} else {
-		dataSize = uint32(numSamples * blockAlign)
-		riffSize = dataSize + riffHeaderSize
-	}
-	return
-}
-
-func (s *Session) wavHeader(numSamples Tz) []byte {
-	var (
-		byteRate           = s.sampleRate * blockAlign
-		riffSize, dataSize = s.wavSizes(numSamples)
-	)
-
-	//  0  4 "RIFF"
-	//  4  4 riffSize = header + samples * byteRate (or just maximum possible)
-	//  8  4 "WAVE"
-	// 12  4 "fmt "
-	// 16  4 fmtSize
-	// 20  2 smplFmt
-	// 22  2 numChan
-	// 24  4 smpRate
-	// 28  4 byteRate
-	// 32  2 block
-	// 34  2 bits
-	// 36  2 extSize
-	// 38  2 validBits
-	// 40  4 channelMask
-	// 44 16 format
-	// 60  4 "data"
-	// 64  4 dataSize = samples * byteRate
-	// 68  ...
-
-	buf := new(bytes.Buffer)
-	buf.Write([]byte("RIFF"))
-	binary.Write(buf, binary.LittleEndian, uint32(riffSize))
-	buf.Write([]byte("WAVE"))
-	buf.Write([]byte("fmt "))
-	binary.Write(buf, binary.LittleEndian, uint32(fmtSize))
-	binary.Write(buf, binary.LittleEndian, uint16(sampleFormat))
-	binary.Write(buf, binary.LittleEndian, uint16(numChannels))
-	binary.Write(buf, binary.LittleEndian, uint32(s.sampleRate))
-	binary.Write(buf, binary.LittleEndian, uint32(byteRate))
-	binary.Write(buf, binary.LittleEndian, uint16(blockAlign))
-	binary.Write(buf, binary.LittleEndian, uint16(bitsPerSample))
-	binary.Write(buf, binary.LittleEndian, uint16(extSize))
-	binary.Write(buf, binary.LittleEndian, uint16(bitsPerSample))
-	binary.Write(buf, binary.LittleEndian, uint32(0))
-	binary.Write(buf, binary.LittleEndian, uint16(sampleFormat))
-	buf.Write([]byte(sampleFormatSuffix))
-	buf.Write([]byte("data"))
-	binary.Write(buf, binary.LittleEndian, uint32(dataSize))
-
-	return buf.Bytes()
-}
-
-func (s *Session) writeBuffer(buffer []Buffer) error {
-	if len(buffer) != numChannels {
-		return errors.New("Only stereo buffers are supported")
-	}
-	length := len(buffer[0])
-	if len(buffer[1]) != length {
-		return errors.New("invalid buffer")
-	}
-
-	out := bufio.NewWriter(s.output)
-	b := make([]byte, 8)
-	for i := 0; i < length; i++ {
-		l := math.Float32bits(buffer[0][i])
-		r := math.Float32bits(buffer[1][i])
-		binary.LittleEndian.PutUint32(b[0:4], l)
-		binary.LittleEndian.PutUint32(b[4:8], r)
-		out.Write(b)
-	}
-	return out.Flush()
-}
-
-func (s *Session) updateHeader() error {
-	if w, ok := s.output.(io.WriterAt); ok {
-		var (
-			buf                = make([]byte, 4)
-			riffSize, dataSize = s.wavSizes(s.numOut)
-			err                error
-		)
-		binary.LittleEndian.PutUint32(buf, riffSize)
-		_, err = w.WriteAt(buf, riffSizeOff)
-		if err != nil {
-			if isPipeErr(err) {
-				return nil
-			}
-			return err
-		}
-		binary.LittleEndian.PutUint32(buf, dataSize)
-		_, err = w.WriteAt(buf, dataSizeOff)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func isPipeErr(err error) bool {
-	if perr, ok := err.(*os.PathError); ok {
-		err = perr.Err
-	}
-	if err == syscall.ESPIPE {
-		return true
-	}
-	return false
 }
 
 func assert(b bool) {

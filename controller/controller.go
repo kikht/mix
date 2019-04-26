@@ -2,6 +2,7 @@ package controller
 
 import (
 	"github.com/kikht/mix"
+	"github.com/kikht/mix/session"
 
 	"fmt"
 	"log"
@@ -70,9 +71,9 @@ func (c *Controller) Ambience(label string) (mix.SourceMutator, error) {
 	mutator := func(cur mix.Source, pos mix.Tz) mix.Source {
 		log.Println("Generating ambience", pos)
 		//TODO: reuse session to prevent allocations
-		next := mix.NewSession(c.sampleRate)
+		next := session.NewSession(c.sampleRate, true)
 		if cur != nil {
-			next.AddRegion(mix.Region{
+			next.AddRegion(session.Region{
 				Source:  cur,
 				Begin:   0,
 				Offset:  0,
@@ -81,7 +82,7 @@ func (c *Controller) Ambience(label string) (mix.SourceMutator, error) {
 				FadeOut: c.fade,
 			})
 		}
-		next.AddRegion(mix.Region{
+		next.AddRegion(session.Region{
 			Source: amb,
 			Begin:  pos,
 			Offset: pos,
@@ -112,10 +113,10 @@ func (c *Controller) Music(label string) (mix.SourceMutator, error) {
 	mutator := func(cur mix.Source, pos mix.Tz) mix.Source {
 		log.Println("Generating music", pos)
 		//TODO: reuse session to prevent allocations
-		next := mix.NewSession(c.sampleRate)
+		next := session.NewSession(c.sampleRate, true)
 		//Fade out of current ambience
 		if cur != nil {
-			next.AddRegion(mix.Region{
+			next.AddRegion(session.Region{
 				Source:  cur,
 				Begin:   0,
 				Offset:  0,
@@ -125,7 +126,7 @@ func (c *Controller) Music(label string) (mix.SourceMutator, error) {
 			})
 		}
 		//Music itself
-		next.AddRegion(mix.Region{
+		next.AddRegion(session.Region{
 			Source:  mus,
 			Begin:   pos,
 			Offset:  0,
@@ -135,7 +136,7 @@ func (c *Controller) Music(label string) (mix.SourceMutator, error) {
 		})
 		//Next ambience with fade in
 		eventEnd := pos + mus.Length() - c.fade
-		next.AddRegion(mix.Region{
+		next.AddRegion(session.Region{
 			Source: amb,
 			Begin:  eventEnd,
 			Offset: eventEnd,
@@ -155,14 +156,14 @@ func (c *Controller) Effect(label string) (mix.SourceMutator, error) {
 
 	mutator := func(cur mix.Source, pos mix.Tz) mix.Source {
 		log.Println("Generating effect", pos)
-		var next *mix.Session
-		next, ok := cur.(*mix.Session)
+		var next *session.Session
+		next, ok := cur.(*session.Session)
 		if ok {
-			next = next.Clone().(*mix.Session)
+			next = next.Clone().(*session.Session)
 		} else {
-			next = mix.NewSession(c.sampleRate)
+			next = session.NewSession(c.sampleRate, true)
 		}
-		next.AddRegion(mix.Region{
+		next.AddRegion(session.Region{
 			Source:  eff,
 			Begin:   pos,
 			Offset:  0,

@@ -95,7 +95,7 @@ func (dst Buffer) SqrtRamp(initial, target float32) {
 // Some useful info about panning in Ardour: http://lists.project-wombat.org/pipermail/ardour-dev-ardour.org/2005-August/009449.html
 // Details of sincos implementation in golang: https://groups.google.com/forum/#!topic/golang-dev/gFJDX3mnjQU
 // Anyway it's better to cache results of this in preparedRegion struct
-func panStereoGain(pan float32) (l2l, l2r, r2l, r2r float32) {
+func PanStereoGain(pan float32) (l2l, l2r, r2l, r2r float32) {
 	if pan > 1 {
 		pan = 1
 	} else if pan < -1 {
@@ -117,7 +117,7 @@ func panStereoGain(pan float32) (l2l, l2r, r2l, r2r float32) {
 	return
 }
 
-func panMonoGain(pan float32) (l, r float32) {
+func PanMonoGain(pan float32) (l, r float32) {
 	if pan > 1 {
 		pan = 1
 	} else if pan < -1 {
