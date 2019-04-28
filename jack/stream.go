@@ -47,6 +47,7 @@ func init() {
 		<-sigs
 		log.Println("Closing jack connection")
 		client.Close()
+		os.Exit(-1)
 	}()
 
 	status = client.SetProcessCallback(process)
