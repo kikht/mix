@@ -8,9 +8,10 @@ import (
 
 func main() {
 	sess := examples.SampleSession("examples/audio/")
-	end, err := sfml.Play(sess)
+	stream, err := sfml.NewStream(sess.SampleRate())
 	if err == nil {
-		<-end
+		stream.Play(sess)
+		<-stream.End()
 	} else {
 		log.Println(err)
 	}
