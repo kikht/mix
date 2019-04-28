@@ -13,9 +13,13 @@ type Controller interface {
 }
 
 func Run(control Controller) {
-	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
+	token := os.Getenv("TELEGRAM_TOKEN")
+	if token == "" {
+		log.Fatalln("No TELEGRAM_TOKEN in environment")
+	}
+	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
-		log.Panic(err)
+		log.Println("Can not connect to telegram API:", err)
 	}
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
