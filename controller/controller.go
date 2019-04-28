@@ -17,7 +17,8 @@ type Music struct {
 }
 
 type Controller struct {
-	fade, sampleRate, chunkSize mix.Tz
+	fade   mix.Tz
+	player mix.PlayerState
 
 	ambience map[string]Ambience
 	music    map[string]Music
@@ -26,14 +27,13 @@ type Controller struct {
 	lastAmbience string
 }
 
-func NewController(fade, sampleRate, chunkSize mix.Tz) Controller {
+func NewController(fade mix.Tz, player mix.PlayerState) Controller {
 	return Controller{
-		fade:       fade,
-		sampleRate: sampleRate,
-		ambience:   make(map[string]Ambience),
-		music:      make(map[string]Music),
-		effect:     make(map[string]Effect),
-		chunkSize:  chunkSize,
+		fade:     fade,
+		ambience: make(map[string]Ambience),
+		music:    make(map[string]Music),
+		effect:   make(map[string]Effect),
+		player:   player,
 	}
 }
 
@@ -72,7 +72,7 @@ func (c *Controller) Ambience(label string) (mix.SourceMutator, error) {
 		return nil, fmt.Errorf("Ambience %s is not found", label)
 	}
 	c.lastAmbience = label
-	return session.NewAmbience(amb, c.fade, c.chunkSize), nil
+	return session.NewAmbience(amb, c.fade, c.player.ChunkSize()), nil
 }
 
 func (c *Controller) Music(label string) (mix.SourceMutator, error) {
@@ -90,7 +90,7 @@ func (c *Controller) Music(label string) (mix.SourceMutator, error) {
 			ambLabel, label)
 	}
 	c.lastAmbience = label
-	return session.NewMusic(mus, amb, c.fade, c.chunkSize), nil
+	return session.NewMusic(mus, amb, c.fade, c.player.ChunkSize()), nil
 }
 
 func (c *Controller) Effect(label string) (mix.SourceMutator, error) {
@@ -99,14 +99,15 @@ func (c *Controller) Effect(label string) (mix.SourceMutator, error) {
 		return nil, fmt.Errorf("Music %s is not found", label)
 	}
 
+	//TODO: fix when it is the first action
 	mutator := func(cur mix.Source, pos mix.Tz) mix.Source {
 		log.Println("Generating effect", pos)
 		var next *session.Session
 		next, ok := cur.(*session.Session)
-		if ok {
+		if ok && next.Length() > pos {
 			next = next.Clone().(*session.Session)
 		} else {
-			next = session.NewSession(c.sampleRate, true)
+			next = session.NewSession(c.player.SampleRate(), true)
 		}
 		next.AddRegion(session.Region{
 			Source:  eff,

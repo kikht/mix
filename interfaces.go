@@ -1,6 +1,7 @@
 package mix
 
 type PlayerState interface {
+	SampleRate() Tz
 	ChunkSize() Tz
 }
 

@@ -14,11 +14,11 @@ type AheadController struct {
 	mix    mix.Source
 }
 
-func NewAheadController(sampleRate mix.Tz, player mix.Player) *AheadController {
-	fade := mix.DurationToTz(100*time.Millisecond, sampleRate)
+func NewAheadController(player mix.Player) *AheadController {
+	fade := mix.DurationToTz(100*time.Millisecond, player.SampleRate())
 	return &AheadController{
-		Controller: NewController(fade, sampleRate, player.ChunkSize()),
-		ahead:      mix.DurationToTz(300*time.Millisecond, sampleRate),
+		Controller: NewController(fade, player),
+		ahead:      mix.DurationToTz(300*time.Millisecond, player.SampleRate()),
 		player:     player,
 	}
 }
@@ -42,5 +42,5 @@ func (c *AheadController) pos() mix.Tz {
 		c.start = time.Now()
 		return c.ahead
 	}
-	return mix.DurationToTz(time.Now().Sub(c.start), c.sampleRate) + c.ahead
+	return mix.DurationToTz(time.Now().Sub(c.start), c.player.SampleRate()) + c.ahead
 }
