@@ -1,143 +1,171 @@
 package sfml
 
+/*
+#cgo LDFLAGS: -lcsfml-audio -lcsfml-system
+#include <SFML/Audio/SoundStream.h>
+sfSoundStream* cgo_createStream(unsigned int channelCount,
+                                unsigned int sampleRate,
+                                void* obj);
+*/
+import "C"
+
 import (
 	"github.com/kikht/mix"
-	"github.com/kikht/mix/gosfml2"
 
 	"github.com/rkusa/gm/math32"
 
+	"errors"
 	"log"
 	"math"
 	"sync/atomic"
-	"time"
+	"unsafe"
 )
 
 const (
-	chunkPow   = 11
-	chunkSize  = 1 << 11
-	maxStreams = 1 << 10
-	stateMask  = int64(chunkSize - 1)
-	posMask    = ^int64(stateMask)
+	chunkSize   = 1 << 11
+	maxStreams  = 1 << 7
+	posMask     = ^uint64(chunkSize - 1)
+	srcBit      = 1
+	activeBit   = 2
+	numChannels = 2
 )
 
+func init() {
+	log.Printf("cgo_sfml.stream init chunkSize=%d maxStreams=%d posMask=%x\n",
+		chunkSize, maxStreams, posMask)
+}
+
 type Stream struct {
-	state      *int64
+	state      *uint64
 	sampleRate mix.Tz
-	handler    *gosfml2.SoundStream
+	handle     *C.sfSoundStream
 	sources    [2]mix.Source
 	buffer     []int16
 	end        chan struct{}
 }
 
 var (
-	stateArray [maxStreams]int64
+	stateArray [maxStreams]uint64
 	streams    []*Stream
 )
 
-func NewStream(numChannels int, sampleRate mix.Tz) (*Stream, error) {
+func NewStream(sampleRate mix.Tz) (*Stream, error) {
 	id := len(streams)
-	state := &stateArray[id]
-	handler, err := gosfml2.NewSoundStream(onStreamChunk, onStreamSeek,
-		uint(numChannels), uint(sampleRate), id)
-	if err != nil {
-		return nil, err
-	}
-	res := Stream{
-		state:      state,
-		handler:    handler,
+	stream := &Stream{
+		state:      &stateArray[id],
 		sampleRate: sampleRate,
-		buffer:     make([]int16, 2*chunkSize),
+		buffer:     make([]int16, numChannels*chunkSize),
 	}
-	streams = append(streams, &res)
-	*state = 0
-	return &res, nil
+	stream.handle = C.cgo_createStream(C.uint(numChannels), C.uint(sampleRate),
+		unsafe.Pointer(stream.state))
+	if stream.handle == nil {
+		return nil, errors.New("Can not create sfml sound stream")
+	}
+	streams = append(streams, stream)
+	*stream.state = 0
+	//TODO: add destructor to finalize
+	return stream, nil
 }
 
-func onStreamChunk(data interface{}) (proceed bool, samples []int16) {
-	id := data.(int)
-	state := atomic.AddInt64(&stateArray[id], chunkSize)
-
+//export onStreamChunk
+func onStreamChunk(chunk *C.sfSoundStreamChunk, ptr unsafe.Pointer) C.sfBool {
+	id := uintptr(ptr) - uintptr(unsafe.Pointer(&stateArray[0]))
+	statePtr := (*uint64)(ptr)
+	state := atomic.AddUint64(statePtr, chunkSize)
 	stream := streams[id]
-	src := stream.sources[state&1]
+
+	chunk.samples = (*C.sfInt16)(unsafe.Pointer(&stream.buffer[0]))
+	chunk.sampleCount = C.uint(numChannels * chunkSize)
 
 	posAfter := mix.Tz(state & posMask)
 	pos := posAfter - chunkSize
+	src := stream.sources[state&srcBit]
 	if pos >= src.Length() {
-		return false, stream.buffer
+		log.Println("End of stream", statePtr, pos)
+		atomic.StoreUint64(statePtr, state&srcBit)
+		defer close(stream.end)
+		return C.sfFalse
 	}
 
-	var buf [2]mix.Buffer
-	buf[0] = src.Samples(0, pos, chunkSize)
-	buf[1] = src.Samples(1, pos, chunkSize)
+	buf := [2]mix.Buffer{
+		src.Samples(0, pos, chunkSize),
+		src.Samples(1, pos, chunkSize)}
 	for i := 0; i < chunkSize; i++ {
-		buffer[2*i] = norm(buf[0][i])
-		buffer[2*i+1] = norm(buf[1][i])
+		stream.buffer[2*i] = norm(buf[0][i])
+		stream.buffer[2*i+1] = norm(buf[1][i])
 	}
-	return true, buffer
+	return C.sfTrue
 }
 
-func onStreamSeek(time time.Duration, data interface{}) {
-	id := data.(int)
-	newPos := int64(mix.DurationToTz(time, streams[id].sampleRate)) & posMask
-	state := &stateArray[id]
-	for {
-		orig := atomic.LoadInt64(state)
-		upd := newPos | (orig & stateMask)
-		if atomic.CompareAndSwapInt64(state, orig, upd) {
-			break
-		}
-	}
+//export onStreamSeek
+func onStreamSeek(time C.sfTime, ptr unsafe.Pointer) {
+	//id := data.(int)
+	//log.Println("Stream seek")
+	//newPos := int64(mix.DurationToTz(time, streams[id].sampleRate)) & posMask
+	//state := &stateArray[id]
+	//for {
+	//	orig := atomic.LoadUint64(state)
+	//	upd := newPos | (orig & stateMask)
+	//	if atomic.CompareAndSwapUint64(state, orig, upd) {
+	//		break
+	//	}
+	//}
 }
 
 func (s *Stream) End() <-chan struct{} {
 	return s.end
 }
 
-func (s *Stream) startPlaying() {
-	if s.handler.GetStatus() != gosfml2.SoundStatusPlaying {
-		log.Println("Start of play")
-		s.end = make(chan struct{})
-		go func() {
-			defer close(s.end)
-			s.handler.Play()
-			for s.handler.GetStatus() == gosfml2.SoundStatusPlaying {
-				time.Sleep(100 * time.Millisecond)
-			}
-		}()
-	}
-}
-
 func (s *Stream) Play(src mix.Source) {
-	log.Println("Stream.Play()")
-	//TODO: check source
-	orig := atomic.LoadInt64(s.state)
-	s.sources[(orig&1)^1] = src
-	for !atomic.CompareAndSwapInt64(s.state, orig, orig^1) {
-		orig = atomic.LoadInt64(s.state)
+	orig := atomic.LoadUint64(s.state)
+	//src bit must be changed only by controller thread
+	s.sources[(orig&srcBit)^srcBit] = src
+	for {
+		log.Println("Stream.Play() iteration", s.state)
+		upd := (orig ^ srcBit) | activeBit
+		if atomic.CompareAndSwapUint64(s.state, orig, upd) {
+			break
+		}
+		orig = atomic.LoadUint64(s.state)
 	}
-	s.startPlaying()
+	if (orig & activeBit) == 0 {
+		log.Println("Start playing", s.state)
+		s.end = make(chan struct{})
+		C.sfSoundStream_play(s.handle)
+	}
 }
 
 func (s *Stream) Switch(generator mix.SourceMutator) {
+	var orig uint64
 	for {
-		orig := atomic.LoadInt64(s.state)
-		cur := s.sources[orig&1]
-		pos := orig & posMask
-		//TODO: check source
-		s.sources[(orig&1)^1] = generator.Mutate(cur, mix.Tz(pos))
-		if atomic.CompareAndSwapInt64(s.state, orig, orig^1) {
+		log.Println("Stream.Switch() iteration", s.state)
+		orig = atomic.LoadUint64(s.state)
+		cur := s.sources[orig&srcBit]
+		pos := mix.Tz(orig & posMask)
+		s.sources[(orig&srcBit)^srcBit] = generator.Mutate(cur, pos)
+		upd := (orig ^ srcBit) | activeBit
+		if atomic.CompareAndSwapUint64(s.state, orig, upd) {
 			break
 		}
 	}
-	s.startPlaying()
-}
-
-func (s *Stream) Pos() mix.Tz {
-	return mix.Tz(atomic.LoadInt64(s.state) & posMask)
+	if (orig & activeBit) == 0 {
+		log.Println("Start playing", s.state)
+		s.end = make(chan struct{})
+		C.sfSoundStream_play(s.handle)
+	}
 }
 
 func (s *Stream) ChunkSize() mix.Tz {
 	return chunkSize
+}
+
+func (s *Stream) State() (mix.Source, mix.Tz) {
+	state := atomic.LoadUint64(s.state)
+	return s.sources[state&srcBit], mix.Tz(state & posMask)
+}
+
+func (s *Stream) SampleRate() mix.Tz {
+	return s.sampleRate
 }
 
 // simple limiter
