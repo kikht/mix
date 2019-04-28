@@ -19,4 +19,5 @@ go run examples/main.go | aplay
 
 - github.com/rkusa/gm/math32 - math functions for float32
 - github.com/krig/go-sox - cgo bindings to [SoX](http://sox.sourceforge.net/) for audio input
-- gosfml2 package is a stripped copy of bitbucket.org/krepa098/gosfml2 - cgo bindings to [sfml](https://www.sfml-dev.org/)
+- github.com/xthexder/go-jack - cgo bindings to [jackd](http://jackaudio.org)
+- sfml package requires [csfml 2.4](https://www.sfml-dev.org)
