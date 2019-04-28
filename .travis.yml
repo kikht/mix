@@ -16,7 +16,7 @@ go:
 
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install -y libsox-dev libcsfml-dev
+  - sudo apt-get install -y libsox-dev libcsfml-dev libjack-jackd2-dev
 
 install:
   - go get -t -v ./...
