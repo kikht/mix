@@ -5,6 +5,7 @@ import (
 
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 )
 
@@ -172,6 +173,9 @@ func (s *Session) mix(buffer [2]mix.Buffer) {
 		}
 	}
 	if s.forgetPast {
+		if s.rPos > 0 {
+			//log.Printf("Session: %p GC regions: %d active %d\n", s, s.rPos, len(s.regions))
+		}
 		s.regions = s.regions[s.rPos:]
 		s.rPos = 0
 	}
@@ -284,7 +288,7 @@ func (s *Session) SetPosition(pos mix.Tz) {
 		return
 	}
 	if pos < s.pos && s.forgetPast {
-		panic("Can not rewind forgetful session")
+		log.Fatalf("Rewind of forgetful session %d < %d", pos, s.pos)
 	}
 	s.pos = pos
 
